@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment (VERY IMPORTANT)
+venv/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build files
+dist/
+build/
+
+# Jupyter (if used)
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.tar
+
+# Optional: ignore datasets if large
+# data/*.csv
