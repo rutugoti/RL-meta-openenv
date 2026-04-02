@@ -1,11 +1,15 @@
 """
-Baseline inference script for DataCleaningEnv.
-Runs a GPT-4o agent against all 3 tasks with seed=42.
+DataCleaningEnv — Baseline Inference Script
+============================================
+Runs a GPT-4o agent against all 3 tasks and prints JSON scores.
+
 Usage:
-    set OPENAI_API_KEY=sk-...        (Windows)
-    export OPENAI_API_KEY=sk-...     (Mac/Linux)
+    export OPENAI_API_KEY=sk-...
     python baseline/run.py
-    python baseline/run.py --verbose
+
+    python baseline/run.py --verbose        # step-by-step output
+    python baseline/run.py --task 1         # single task only
+    python baseline/run.py --seed 99        # different seed
 """
 from __future__ import annotations
 import os
@@ -14,11 +18,9 @@ import sys
 import json
 import argparse
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from openai import OpenAI
-
-# add project root to path so imports work
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from env.environment import DataCleaningEnv
 from env.models      import Action, Observation
 from graders.grader  import grade
@@ -47,14 +49,13 @@ Available operations:
 4. fill_nulls
    {"op": "fill_nulls", "params": {"col": "NAME", "strategy": "STRATEGY"}}
    Valid strategies: mean, median, mode, value
-   For value strategy add: "value": "unknown"
+   For value strategy also add: "value": "unknown"
 
 5. strip_whitespace
    {"op": "strip_whitespace", "params": {"col": "all"}}
 
 Rules:
-- Only use column names that exist in the current DataFrame
-- Choose the action most likely to move toward the target schema
+- Only use column names that currently exist in the DataFrame
 - Output raw JSON only — no other text whatsoever
 """
 
@@ -63,9 +64,7 @@ Rules:
 def parse_action(text: str) -> Action | None:
     if not text or not text.strip():
         return None
-    text = text.strip()
-    text = re.sub(r"```(?:json)?", "", text).strip()
-    text = text.strip("`").strip()
+    text = re.sub(r"```(?:json)?", "", text).strip().strip("`").strip()
     match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
     if not match:
         return None
@@ -74,9 +73,8 @@ def parse_action(text: str) -> Action | None:
         if "operation" in data and "op" not in data:
             data["op"] = data.pop("operation")
         if "op" in data and "params" not in data:
-            op     = data["op"]
-            params = {k: v for k, v in data.items() if k != "op"}
-            data   = {"op": op, "params": params}
+            op, params = data["op"], {k:v for k,v in data.items() if k!="op"}
+            data = {"op": op, "params": params}
         return Action(**data)
     except Exception:
         return None
@@ -84,22 +82,19 @@ def parse_action(text: str) -> Action | None:
 
 def obs_to_prompt(obs: Observation) -> str:
     lines = [
-        f"Step {obs.step_count + 1}/30",
-        "",
-        f"Current columns: {obs.columns}",
-        f"Current dtypes:  {obs.dtypes}",
-        f"Null counts:     {obs.null_counts}",
-        "",
+        f"Step {obs.step_count + 1}/30", "",
+        f"Columns:     {obs.columns}",
+        f"Dtypes:      {obs.dtypes}",
+        f"Null counts: {obs.null_counts}", "",
         "Sample rows (first 3):",
     ]
     for i, row in enumerate(obs.sample_rows):
         lines.append(f"  Row {i+1}: {row}")
-    lines.append("")
-    lines.append("Choose ONE cleaning action to apply.")
+    lines += ["", "Choose ONE cleaning action. Raw JSON only."]
     return "\n".join(lines)
 
 
-# ── Core agent loop ───────────────────────────────────────────────
+# ── Agent loop ────────────────────────────────────────────────────
 def run_task(
     client:  OpenAI,
     task_id: int,
@@ -115,10 +110,8 @@ def run_task(
     parse_fails = 0
 
     while not obs.done:
-        user_msg = obs_to_prompt(obs)
-        messages.append({"role": "user", "content": user_msg})
+        messages.append({"role": "user", "content": obs_to_prompt(obs)})
 
-        # call LLM
         try:
             response = client.chat.completions.create(
                 model       = "gpt-4o",
@@ -132,19 +125,15 @@ def run_task(
                 print(f"  [API error] {e}", file=sys.stderr)
             raw_text = ""
 
-        # parse action — fallback to safe no-op if parsing fails
         action = parse_action(raw_text)
         if action is None:
             parse_fails += 1
-            action = Action(op="strip_whitespace",
-                            params={"col": "all"})
+            action = Action(op="strip_whitespace", params={"col": "all"})
+            if verbose:
+                print(f"  [parse fail] {repr(raw_text[:60])}", file=sys.stderr)
 
-        messages.append({
-            "role":    "assistant",
-            "content": raw_text or "{}"
-        })
+        messages.append({"role": "assistant", "content": raw_text or "{}"})
 
-        # step environment
         obs, reward, done, info = env.step(action)
         final_score = reward.total
         steps_taken += 1
@@ -153,18 +142,15 @@ def run_task(
             status = "OK " if info["action_valid"] else "BAD"
             print(
                 f"  [{status}] step {steps_taken:2d} | "
-                f"{action.op:<20} | score={reward.total:.4f}"
+                f"{action.op:<20} | score={reward.total:.4f}",
+                file=sys.stderr,
             )
-
         if done:
             break
 
-    # official grader score
-    grader_score = grade(task_id, env.df)
-
     return {
         "task_id":      task_id,
-        "score":        grader_score,
+        "score":        grade(task_id, env.df),
         "reward_score": round(final_score, 4),
         "steps":        steps_taken,
         "parse_fails":  parse_fails,
@@ -175,25 +161,26 @@ def run_task(
 # ── Entry point ───────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--verbose", action="store_true",
-                        help="Print step-by-step agent actions")
-    parser.add_argument("--task", type=int, default=0,
-                        help="Run single task (1/2/3). Default: all")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed (default: 42)")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--task",    type=int, default=0)
+    parser.add_argument("--seed",    type=int, default=42)
     args = parser.parse_args()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
-        print("ERROR: OPENAI_API_KEY environment variable not set",
-              file=sys.stderr)
+        print(
+            "ERROR: OPENAI_API_KEY environment variable is not set.\n"
+            "Set it with:  export OPENAI_API_KEY=sk-...\n"
+            "Windows:      $env:OPENAI_API_KEY = 'sk-...'",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     client   = OpenAI(api_key=api_key)
     task_ids = [args.task] if args.task in (1, 2, 3) else [1, 2, 3]
 
     if args.verbose:
-        print(f"Running baseline with seed={args.seed}", file=sys.stderr)
+        print(f"Running baseline seed={args.seed}", file=sys.stderr)
 
     results = []
     for task_id in task_ids:
@@ -202,8 +189,9 @@ def main():
         result = run_task(client, task_id,
                           seed=args.seed, verbose=args.verbose)
         results.append(result)
+        if args.verbose:
+            print(f"  Score: {result['score']}", file=sys.stderr)
 
-    # output JSON to stdout — this is what /baseline endpoint returns
     print(json.dumps(results, indent=2))
 
 
