@@ -135,6 +135,7 @@ export OPENAI_API_KEY=sk-...
 python baseline/run.py
 ```
 
+
 Run tests:
 
 ```bash
@@ -184,9 +185,6 @@ Evaluated with seed=42 on all 3 tasks:
 | Task 2 | Medium | **FILL_YOUR_SCORE** |
 | Task 3 | Hard | **FILL_YOUR_SCORE** |
 
-Scores produced by `python baseline/run.py` with `USE_MOCK_AGENT=true`
-and seed=42. Judges may run with their own `OPENAI_API_KEY` for
-live GPT-4o evaluation.
 
 ---
 
@@ -202,7 +200,7 @@ data-cleaning-env/
 ├── graders/
 │   └── grader.py          # Deterministic graders for all 3 tasks
 ├── baseline/
-│   └── run.py             # GPT-4o agent loop + mock agent fallback
+│   └── run.py             # GPT-4o agent loop 
 ├── api/
 │   └── main.py            # FastAPI server — all 6 required endpoints
 ├── tests/
