@@ -135,8 +135,8 @@ with each action — a correct rename immediately raises name_score.
 ## Setup
 
 ```bash
-git clone https://github.com/YOURUSERNAME/data-cleaning-env
-cd data-cleaning-env
+git clone https://github.com/rutugoti/RL-meta-openenv
+cd RL-meta-openenv
 python -m venv venv
 source venv/bin/activate        # Mac/Linux
 # venv\Scripts\activate         # Windows
@@ -193,13 +193,14 @@ Swagger UI: `https://ruuuuq-data-cleaning-env.hf.space/docs`
 ## Baseline scores
 
 Evaluated with seed=42 on all 3 tasks:
-
 | Task | Difficulty | Baseline score |
-|---|---|---|
-| Task 1 | Easy | **FILL_YOUR_SCORE** |
-| Task 2 | Medium | **FILL_YOUR_SCORE** |
-| Task 3 | Hard | **FILL_YOUR_SCORE** |
+|------|------------|----------------|
+| Task 1 | Easy   | **0.8000**     |
+| Task 2 | Medium | **0.7673**     |
+| Task 3 | Hard   | **0.8045**     |
 
+Scores produced by `python baseline/run.py` with seed=42.
+this can only run with your  own `OPENAI_API_KEY` for GPT-4o evaluation.
 
 ---
 
