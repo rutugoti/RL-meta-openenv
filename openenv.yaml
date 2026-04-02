@@ -1,0 +1,110 @@
+name: data-cleaning-env
+version: "1.0.0"
+description: >
+  An RL environment where an agent learns to repair messy,
+  real-world tabular datasets by applying cleaning operations.
+  Covers column renaming, dtype casting, null filling, and
+  schema normalization across three difficulty levels.
+author: YOUR_NAME_HERE
+
+tags:
+  - openenv
+  - data-cleaning
+  - tabular
+  - reinforcement-learning
+
+tasks:
+  - id: 1
+    name: basic-cleanup
+    difficulty: easy
+    description: >
+      Rename 4 columns to target names, drop 1 duplicate
+      column, and strip leading/trailing whitespace from
+      all string values.
+
+  - id: 2
+    name: type-fixing
+    difficulty: medium
+    description: >
+      Fill nulls by policy (mean for numeric, value for
+      categorical), cast 2 columns to correct dtypes,
+      and rename 6 columns to target schema.
+
+  - id: 3
+    name: schema-inference
+    difficulty: hard
+    description: >
+      Normalize a multi-column dirty table: rename all
+      columns to snake_case, convert mixed date strings
+      to datetime64, detect and rename the foreign key
+      column, and handle missing customer names.
+
+action_space:
+  type: discrete
+  description: >
+    Each step the agent submits one action with an op
+    and op-specific params dict.
+  ops:
+    - name: rename_column
+      params:
+        from_col: string
+        to_col: string
+
+    - name: cast_dtype
+      params:
+        col: string
+        dtype: "one of: int64, float64, object, datetime64[ns]"
+
+    - name: drop_column
+      params:
+        col: string
+
+    - name: fill_nulls
+      params:
+        col: string
+        strategy: "one of: mean, median, mode, value"
+        value: "string (only when strategy=value)"
+
+    - name: strip_whitespace
+      params:
+        col: "column name or 'all'"
+
+observation_space:
+  columns:
+    type: "list[str]"
+    description: Current column names in the DataFrame
+  dtypes:
+    type: "dict[str, str]"
+    description: Column name to dtype string mapping
+  null_counts:
+    type: "dict[str, int]"
+    description: Number of null values per column
+  sample_rows:
+    type: "list[dict]"
+    description: First 3 rows of the DataFrame as dicts
+  step_count:
+    type: int
+    description: Steps taken so far in this episode
+  task_id:
+    type: int
+    description: Which task is running (1, 2, or 3)
+  done:
+    type: bool
+    description: True when episode has ended
+
+endpoints:
+  base_url: https://YOURNAME-data-cleaning-env.hf.space
+  reset:    POST /reset
+  step:     POST /step
+  state:    GET  /state
+  tasks:    GET  /tasks
+  baseline: POST /baseline
+  grader:   POST /grader
+
+baseline:
+  script: baseline/run.py
+  seed: 42
+  scores:
+    task_1: 0.0
+    task_2: 0.0
+    task_3: 0.0
