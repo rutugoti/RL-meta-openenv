@@ -134,32 +134,37 @@ def tasks():
 # Runs baseline/run.py and returns scores for all 3 tasks
 @app.post("/baseline")
 def baseline():
+    """
+    Run baseline/run.py and return scores for all 3 tasks.
+    Requires OPENAI_API_KEY to be set in the environment.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OPENAI_API_KEY not set. Set the environment variable "
+                "and restart the server to use this endpoint."
+            ),
+        )
     try:
-        env_vars = os.environ.copy()
         result = subprocess.run(
             [sys.executable, "baseline/run.py"],
             capture_output = True,
             text           = True,
-            timeout        = 300,   # 5 min max
-            env            = env_vars,
+            timeout        = 300,
+            env            = os.environ.copy(),
             cwd            = os.path.dirname(os.path.dirname(__file__)),
         )
         if result.returncode != 0:
-            # return mock scores if real baseline fails
-            # (e.g. no API key set in environment)
-            return _mock_baseline_scores()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Baseline script failed: {result.stderr[-500:]}"
+            )
         return json.loads(result.stdout)
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504,
                             detail="Baseline timed out after 5 minutes")
-    except Exception as e:
-        return _mock_baseline_scores()
-
-
-def _mock_baseline_scores():
-    """Fallback scores when OpenAI API unavailable."""
-    from baseline.run import run_task_mock
-    return [run_task_mock(t, seed=42) for t in [1, 2, 3]]
 
 
 # ── POST /grader ──────────────────────────────────────────────────
