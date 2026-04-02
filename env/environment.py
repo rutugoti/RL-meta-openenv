@@ -107,19 +107,16 @@ class DataCleaningEnv:
                 if strategy == "mean":
                     if not pd.api.types.is_numeric_dtype(
                             self.df[col]):     return False
-                    self.df[col].fillna(self.df[col].mean(),
-                                        inplace=True)
+                    self.df[col] = self.df[col].fillna(self.df[col].mean())
                 elif strategy == "median":
                     if not pd.api.types.is_numeric_dtype(
                             self.df[col]):     return False
-                    self.df[col].fillna(self.df[col].median(),
-                                        inplace=True)
+                    self.df[col] = self.df[col].fillna(self.df[col].median())
                 elif strategy == "mode":
-                    self.df[col].fillna(self.df[col].mode()[0],
-                                        inplace=True)
+                    self.df[col] = self.df[col].fillna(self.df[col].mode()[0])
                 elif strategy == "value":
-                    val = p.get("value","unknown")
-                    self.df[col].fillna(val, inplace=True)
+                    val = p.get("value", "unknown")
+                    self.df[col] = self.df[col].fillna(val)
                 else:
                     return False
 
