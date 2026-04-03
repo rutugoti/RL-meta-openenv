@@ -1,5 +1,5 @@
 [project]
-name = "data-cleaning-env"
+name = "data-cleaning-env "
 version = "1.0.0"
 description = "OpenEnv-compliant data cleaning agent environment"
 authors = [{ name = "Rutu Goti" }]
