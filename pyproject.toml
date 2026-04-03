@@ -7,7 +7,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "openenv-core>=0.2.0",
+    "openenv>=0.1.0",
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "pydantic>=2.7.0",
@@ -21,13 +21,12 @@ dependencies = [
 serve = "server.app:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["env*", "tasks*", "graders*", "baseline*", "api*", "server*"]
 
 [dependency-groups]
-dev = [
-    "pytest>=8.2.0",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["env", "tasks", "graders", "baseline", "api", "server"]
+dev = ["pytest>=8.2.0"]
