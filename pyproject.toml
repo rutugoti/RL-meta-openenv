@@ -32,5 +32,3 @@ dev-dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["env", "tasks", "graders", "baseline", "api", "server"]
 
-[project.scripts]
-serve = "server.app:serve"
