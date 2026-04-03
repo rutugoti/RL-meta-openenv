@@ -31,3 +31,5 @@ build/
 
 # Optional: ignore datasets if large
 # data/*.csv
+
+*.egg-info/
