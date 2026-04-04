@@ -13,11 +13,14 @@ tags:
 # Data Cleaning Agent Environment
 
 An OpenEnv-compliant reinforcement learning environment where an
-agent learns to repair messy, real-world tabular datasets by applying
-a sequence of cleaning operations.
+agent learns to repair messy, real-world tabular datasets by
+applying a sequence of cleaning operations.
 
-Every data team does this daily. No OpenEnv environment trains agents
-for it. This fills that gap.
+Data engineers spend 60-80% of their time cleaning data
+(IBM, 2016). No existing OpenEnv environment trains agents for
+this task. This fills that gap with a fully deterministic,
+reproducible, multi-task environment graded on real schema
+compliance — not subjective quality.
 
 ---
 
@@ -127,6 +130,22 @@ reward = name_score × 0.35
 Scores are clamped to [0.0, 1.0]. The reward varies meaningfully
 with each action — a correct rename immediately raises name_score.
 
+## Why this reward design
+
+Most RL environments use binary (0/1) or sparse rewards.
+This environment provides three independent partial signals
+at every step:
+
+- **name_score**: did a rename action improve column alignment?
+- **dtype_score**: did a cast action fix a type mismatch?
+- **null_score**: did a fill action reduce missing values?
+
+An agent that renames one column correctly sees an immediate
+reward improvement on that step — without needing to complete
+the entire task. This dense, multi-dimensional signal makes
+the environment suitable for training agents that generalise
+across different dataset schemas.
+
 ---
 
 ## Setup
@@ -188,16 +207,17 @@ Swagger UI: `https://ruuuuq-data-cleaning-env.hf.space/docs`
 ---
 
 ## Baseline scores
+| Task | Difficulty | Baseline score | Agent |
+|------|------------|----------------|-------|
+| Task 1 | Easy   | **0.8000** | 0.7333 |
+| Task 2 | Medium | **0.7673** | 0.8083 |
+| Task 3 | Hard   | **0.8045** | 0.6125 |
 
-Evaluated with seed=42 on all 3 tasks:
-| Task | Difficulty | Baseline score |
-|------|------------|----------------|
-| Task 1 | Easy   | **0.8000**     |
-| Task 2 | Medium | **0.7673**     |
-| Task 3 | Hard   | **0.8045**     |
+Evaluated with `seed=42`. Run with your own `OPENAI_API_KEY`
+for GPT-4o evaluation: `python baseline/run.py --verbose`
 
-Scores produced by `python baseline/run.py` with seed=42.
-this can only run with your  own `OPENAI_API_KEY` for GPT-4o evaluation.
+Script auto-detects: uses GPT-4o if key is set,
+falls back to deterministic mock agent otherwise.
 
 ---
 

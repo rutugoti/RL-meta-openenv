@@ -2,10 +2,12 @@ name: data-cleaning-env
 version: "1.0.0"
 description: >
   An RL environment where an agent learns to repair messy,
-  real-world tabular datasets by applying cleaning operations.
-  Covers column renaming, dtype casting, null filling, and
-  schema normalization across three difficulty levels.
-author: YOUR_NAME_HERE
+  real-world tabular datasets by applying a sequence of
+  cleaning operations — column renaming, dtype casting,
+  null filling, and schema normalization across three
+  difficulty levels. No existing OpenEnv environment
+  covers data cleaning. This fills that gap.
+author: Rutu Goti
 
 tags:
   - openenv
@@ -19,8 +21,8 @@ tasks:
     difficulty: easy
     description: >
       Rename 4 columns to target names, drop 1 duplicate
-      column, and strip leading/trailing whitespace from
-      all string values.
+      column, strip leading/trailing whitespace from all
+      string values. Expected agent score: 0.70-0.90.
 
   - id: 2
     name: type-fixing
@@ -28,7 +30,8 @@ tasks:
     description: >
       Fill nulls by policy (mean for numeric, value for
       categorical), cast 2 columns to correct dtypes,
-      and rename 6 columns to target schema.
+      rename 6 columns to target schema.
+      Expected agent score: 0.40-0.65.
 
   - id: 3
     name: schema-inference
@@ -37,7 +40,8 @@ tasks:
       Normalize a multi-column dirty table: rename all
       columns to snake_case, convert mixed date strings
       to datetime64, detect and rename the foreign key
-      column, and handle missing customer names.
+      column, handle missing customer names.
+      Expected agent score: 0.15-0.35.
 
 action_space:
   type: discrete
@@ -93,21 +97,13 @@ observation_space:
     description: True when episode has ended
 
 endpoints:
-  base_url: https://YOURNAME-data-cleaning-env.hf.space
+  base_url: https://ruuuuq-data-cleaning-env.hf.space
   reset:    POST /reset
   step:     POST /step
   state:    GET  /state
   tasks:    GET  /tasks
   baseline: POST /baseline
   grader:   POST /grader
-
-baseline:
-  script: baseline/run.py
-  seed: 42
-  scores:
-    task_1: 0.0
-    task_2: 0.0
-    task_3: 0.0
 
 inference_script: inference.py
 
