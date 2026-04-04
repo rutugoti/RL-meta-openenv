@@ -9,9 +9,6 @@ tags:
   - openenv
 ---
 
-# Data Cleaning Environment
-This Space provides a Docker environment for data cleaning in RL.
-
 
 # Data Cleaning Agent Environment
 
