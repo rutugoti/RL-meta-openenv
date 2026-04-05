@@ -55,6 +55,7 @@ class StepRequest(BaseModel):
 class GraderRequest(BaseModel):
     task_id:     int
     final_state: dict[str, Any]
+    steps_taken: int = 0
 
 
 # ── POST /reset ───────────────────────────────────────────────────
@@ -169,18 +170,20 @@ def baseline():
 
 # ── POST /grader ──────────────────────────────────────────────────
 @app.post("/grader")
-def grader(req: GraderRequest):
+def grader_endpoint(req: GraderRequest):
     if req.task_id not in TASKS:
         raise HTTPException(status_code=400,
-                            detail=f"task_id must be 1, 2, or 3")
+                            detail="task_id must be 1, 2, or 3")
     try:
         import pandas as pd
         df    = pd.DataFrame(req.final_state)
-        score = grade(req.task_id, df)
+        # pass steps_taken if provided in request
+        steps = getattr(req, "steps_taken", 0) or 0
+        score = grade(req.task_id, df, steps_taken=steps)
         return {"task_id": req.task_id, "score": score}
     except Exception as e:
         raise HTTPException(status_code=422,
-                            detail=f"Could not grade state: {str(e)}")
+                            detail=f"Could not grade: {str(e)}")
 
 
 # ── Health check ──────────────────────────────────────────────────

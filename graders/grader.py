@@ -3,36 +3,42 @@ import pandas as pd
 from tasks.task_definitions import TASKS
 
 
-def grade(task_id: int, df: pd.DataFrame) -> float:
+def grade(task_id: int, df: pd.DataFrame,
+          steps_taken: int = 0) -> float:
     """
-    Public grader — called by /grader endpoint and test suite.
-    Returns float 0.0-1.0. Always deterministic. Never mutates df.
+    Public grader. Returns float 0.0–1.0.
+    steps_taken used by Task 3 to penalise inefficiency.
+    Always deterministic. Never mutates df.
     """
     if task_id not in TASKS:
         raise ValueError(f"task_id must be 1, 2, or 3. Got {task_id}")
     target  = TASKS[task_id]
-    graders = {1: _grade_task1, 2: _grade_task2, 3: _grade_task3}
-    raw     = graders[task_id](df.copy(), target)
+    graders = {
+        1: _grade_task1,
+        2: _grade_task2,
+        3: _grade_task3,
+    }
+    raw = graders[task_id](df.copy(), target, steps_taken)
     return round(max(0.0, min(1.0, float(raw))), 4)
 
 
 # ── Task 1: easy ──────────────────────────────────────────────────
-def _grade_task1(df: pd.DataFrame, target: dict) -> float:
+def _grade_task1(df: pd.DataFrame, target: dict,
+                 steps_taken: int = 0) -> float:
     """
     Score = exact_name_score (80%) + whitespace_score (20%)
-    Uses EXACT column name matching only.
-    Loose matching was giving credit to dirty columns — removed.
+    No step penalty — easy task should be fully solvable.
     """
-    tgt_cols = target["target_columns"]
-
-    # exact name score: columns must match exactly
-    current = set(df.columns)
+    tgt_cols   = target["target_columns"]
+    current    = set(df.columns)
     target_set = set(tgt_cols)
-    exact_matched = len(current & target_set)
-    name_score = exact_matched / len(tgt_cols)
 
-    # whitespace score: no leading/trailing spaces in string values
-    str_cols = df.select_dtypes(include=["object", "string"]).columns
+    # exact name score
+    name_score = len(current & target_set) / len(tgt_cols)
+
+    # whitespace score
+    str_cols = df.select_dtypes(
+        include=["object", "string"]).columns
     if len(str_cols) == 0:
         ws_score = 1.0
     else:
@@ -54,29 +60,27 @@ def _grade_task1(df: pd.DataFrame, target: dict) -> float:
 
 
 # ── Task 2: medium ────────────────────────────────────────────────
-def _grade_task2(df: pd.DataFrame, target: dict) -> float:
+def _grade_task2(df: pd.DataFrame, target: dict,
+                 steps_taken: int = 0) -> float:
     """
     Score = name(30%) + dtype(50%) + null(20%)
-    Name score gives PARTIAL credit for columns that exist
-    but are wrongly named — so dirty df scores ~0.15, not 0.0.
+    No step penalty — medium task, steps not penalised.
     """
     tgt_cols    = target["target_columns"]
     tgt_dtypes  = target.get("target_dtypes", {})
     null_policy = target.get("null_policy", {})
 
-    # name score: exact match = 1.0, case-only wrong = 0.4,
-    # missing entirely = 0.0
-    name_hits = 0.0
-    current_lower = {c.strip().lower(): c for c in df.columns}
+    # name score — partial credit for wrong case
+    name_hits   = 0.0
+    current_low = {c.strip().lower(): c for c in df.columns}
     for col in tgt_cols:
         if col in df.columns:
-            name_hits += 1.0          # exact match
-        elif col.lower() in current_lower:
-            name_hits += 0.4          # wrong case only
-        # else 0 — column missing entirely
+            name_hits += 1.0
+        elif col.lower() in current_low:
+            name_hits += 0.4
     name_score = name_hits / len(tgt_cols)
 
-    # dtype score: with partial credit for near-matches
+    # dtype score — partial credit for near-matches
     if tgt_dtypes:
         dtype_hits = 0.0
         for col, expected_dt in tgt_dtypes.items():
@@ -85,19 +89,17 @@ def _grade_task2(df: pd.DataFrame, target: dict) -> float:
             actual_dt = str(df[col].dtype)
             if actual_dt == expected_dt:
                 dtype_hits += 1.0
-            elif (expected_dt == "int64"   and actual_dt == "float64"):
-                dtype_hits += 0.5
-            elif (expected_dt == "float64" and actual_dt == "int64"):
+            elif (expected_dt in ("int64", "float64") and
+                  actual_dt  in ("int64", "float64")):
                 dtype_hits += 0.5
         dtype_score = dtype_hits / len(tgt_dtypes)
     else:
         dtype_score = 1.0
 
-    # null score: partial credit for partially filled columns
+    # null score — partial credit
     if null_policy:
         null_hits = 0.0
         for col in null_policy:
-            # find col in df even if wrongly named (case-insensitive)
             actual_col = None
             if col in df.columns:
                 actual_col = col
@@ -123,10 +125,16 @@ def _grade_task2(df: pd.DataFrame, target: dict) -> float:
     return round(total, 4)
 
 
-# ── Task 3: hard ──────────────────────────────────────────────────
-def _grade_task3(df: pd.DataFrame, target: dict) -> float:
+# ── Task 3: hard — WITH step penalty ─────────────────────────────
+def _grade_task3(df: pd.DataFrame, target: dict,
+                 steps_taken: int = 0) -> float:
     """
     Field-by-field schema diff. Partial credit per field.
+    STEP PENALTY: each step costs 0.01 (max penalty 0.30).
+    This makes Task 3 genuinely hard — efficiency matters.
+    Mock agent (9 steps) → -0.09 penalty.
+    Random agent (30 steps) → -0.30 penalty.
+    Frontier model (15-20 steps) → -0.15 to -0.20 penalty.
     """
     tgt_cols    = target["target_columns"]
     tgt_dtypes  = target.get("target_dtypes", {})
@@ -135,7 +143,7 @@ def _grade_task3(df: pd.DataFrame, target: dict) -> float:
 
     scores = []
 
-    # column presence
+    # column presence — partial for close snake_case match
     for col in tgt_cols:
         if col in df.columns:
             scores.append(1.0)
@@ -155,9 +163,11 @@ def _grade_task3(df: pd.DataFrame, target: dict) -> float:
         actual_dt = str(df[col].dtype)
         if actual_dt == expected_dt:
             scores.append(1.0)
-        elif expected_dt == "datetime64[ns]" and "datetime" in actual_dt:
+        elif (expected_dt == "datetime64[ns]" and
+              "datetime" in actual_dt):
             scores.append(0.8)
-        elif expected_dt in ("float64","int64") and actual_dt in ("float64","int64"):
+        elif (expected_dt in ("float64", "int64") and
+              actual_dt  in ("float64", "int64")):
             scores.append(0.5)
         else:
             scores.append(0.0)
@@ -184,4 +194,12 @@ def _grade_task3(df: pd.DataFrame, target: dict) -> float:
             )
             scores.append(0.2 if fk_like else 0.0)
 
-    return round(sum(scores) / len(scores), 4) if scores else 0.0
+    base_score = (
+        round(sum(scores) / len(scores), 4)
+        if scores else 0.0
+    )
+
+    # ── Step penalty — what makes Task 3 genuinely hard ──────────
+    step_penalty = min(0.30, steps_taken * 0.01)
+    final = round(max(0.0, base_score - step_penalty), 4)
+    return final

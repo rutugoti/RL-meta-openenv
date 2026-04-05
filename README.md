@@ -209,9 +209,9 @@ Swagger UI: `https://ruuuuq-data-cleaning-env.hf.space/docs`
 ## Baseline scores
 | Task | Difficulty | Baseline score | Agent |
 |------|------------|----------------|-------|
-| Task 1 | Easy   | **0.8000** | 0.7333 |
+| Task 1 | Easy   | **0.8000** | 0.8000 |
 | Task 2 | Medium | **0.7673** | 0.8083 |
-| Task 3 | Hard   | **0.8045** | 0.6125 |
+| Task 3 | Hard   | **0.8045** | 0.8182 |
 
 Evaluated with `seed=42`. Run with your own `OPENAI_API_KEY`
 for GPT-4o evaluation: `python baseline/run.py --verbose`

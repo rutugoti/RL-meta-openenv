@@ -51,16 +51,31 @@ class DataCleaningEnv:
         target = TASKS[self.task_id]
         reward = self._compute_reward(action_valid, target)
         obs    = self._make_observation()
-        info   = {
-            "action_valid": action_valid,
-            "step":         self.step_count,
-            "op":           action.op,
-            "reward_breakdown": {
-                "name_score":   reward.name_score,
-                "dtype_score":  reward.dtype_score,
-                "null_score":   reward.null_score,
-                "step_penalty": reward.step_penalty,
-            }
+        # build rich info for debugging and agent logging
+        target      = TASKS[self.task_id]
+        tgt_cols    = set(target["target_columns"])
+        curr_cols   = set(self.df.columns)
+        matched     = curr_cols & tgt_cols
+        unmatched   = tgt_cols - curr_cols
+        total_nulls = int(self.df.isnull().sum().sum())
+
+        info = {
+            "action_valid":      action_valid,
+            "step":              self.step_count,
+            "op":                action.op,
+            "params":            action.params,
+            "columns_now":       list(self.df.columns),
+            "columns_matched":   list(matched),
+            "columns_missing":   list(unmatched),
+            "total_nulls":       total_nulls,
+            "steps_remaining":   self.MAX_STEPS - self.step_count,
+            "reward_breakdown":  {
+                "name_score":    reward.name_score,
+                "dtype_score":   reward.dtype_score,
+                "null_score":    reward.null_score,
+                "step_penalty":  reward.step_penalty,
+                "total":         reward.total,
+            },
         }
         return obs, reward, done, info
 
