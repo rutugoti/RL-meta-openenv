@@ -111,6 +111,6 @@ baseline:
   script: baseline/run.py
   seed: 42
   scores:
-    task_1: 0.8000
-    task_2: 0.7673
-    task_3: 0.8045
+    task_1: 0.4000
+    task_2: 0.2440
+    task_3: 0.1000
