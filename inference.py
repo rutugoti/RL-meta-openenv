@@ -71,18 +71,29 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # 3. AGENT HELPERS
 # ==============================================================================
 
-SYSTEM_PROMPT = """You are a data cleaning agent.
-You receive the current state of a dirty DataFrame each step.
-Your job is to clean it toward the target schema.
-Respond with EXACTLY ONE action as a JSON object.
-No explanation. No markdown. No code blocks. Raw JSON only.
-Available operations:
-{"op": "rename_column",    "params": {"from_col": "OLD", "to_col": "NEW"}}
-{"op": "cast_dtype",       "params": {"col": "NAME", "dtype": "DTYPE"}}
-{"op": "drop_column",      "params": {"col": "NAME"}}
-{"op": "fill_nulls",       "params": {"col": "NAME", "strategy": "mean|median|mode|value"}}
-{"op": "strip_whitespace", "params": {"col": "all"}}
-Only use column names that currently exist. Output raw JSON only."""
+SYSTEM_PROMPT = """You are an expert Data Cleaning Agent.
+Your goal is to transform a dirty DataFrame into a clean, analysis-ready dataset.
+
+INSTRUCTIONS:
+1. ANALYZE: Look at the Column Names and Dtypes.
+2. STANDARDIZE: Rename columns to snake_case (e.g., "First Name" -> "first_name").
+3. FIX TYPES: Convert numeric strings to numbers, date strings to datetime objects.
+4. HANDLE NULLS: Fill missing values appropriately (mean for numbers, mode for strings).
+5. TRIM: Remove whitespace from all string columns.
+
+OUTPUT FORMAT:
+Respond with EXACTLY ONE JSON object. No markdown. No code blocks.
+Example: {"op": "rename_column", "params": {"from_col": "User ID", "to_col": "user_id"}}
+
+Available Operations:
+- rename_column: Standardize column names.
+- cast_dtype: Fix data types (int64, float64, datetime64[ns], bool).
+- fill_nulls: Fill missing data (strategies: mean, median, mode, value).
+- drop_column: Remove useless columns.
+- strip_whitespace: Clean string columns.
+
+Current Observation:
+"""
 
 def _parse_action(text: str) -> Action:
     """Parses LLM response into an Action object."""
