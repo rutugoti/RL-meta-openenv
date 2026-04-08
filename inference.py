@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 inference.py — OpenEnv Phase 2 entry point.
-Corrected to strictly follow sample script format and logging requirements.
+Corrected: MODEL_NAME now has a default value to prevent crash.
 """
 import os
 import sys
@@ -16,22 +16,28 @@ from openai import OpenAI
 
 # Import your specific environment and models
 # Ensure these paths match your repository structure
-from env.environment import DataCleaningEnv
-from env.models      import Action, Observation
-from graders.grader  import grade
+try:
+    from env.environment import DataCleaningEnv
+    from env.models      import Action, Observation
+    from graders.grader  import grade
+except ImportError as e:
+    print(f"[CRITICAL] Import failed: {e}. Ensure running from repo root.", flush=True)
+    sys.exit(1)
 
 # ==============================================================================
-# 1. STRICT CONFIGURATION
+# 1. CONFIGURATION
 # ==============================================================================
-# CRITICAL: No fallback values. This forces the script to use the Proxy variables
-# injected by the Phase 2 validator. Failure to find them will raise a clear error.
+# CRITICAL: Proxy variables MUST be present (Injected by Validator)
 try:
     API_KEY = os.environ["API_KEY"]
     API_BASE_URL = os.environ["API_BASE_URL"]
-    MODEL_NAME = os.environ["MODEL_NAME"]
 except KeyError as e:
-    raise SystemExit(f"Error: Missing required environment variable {e}. "
-                     "Cannot proceed without Proxy configuration.")
+    # Use SystemExit to ensure a clean non-zero exit for the validator
+    raise SystemExit(f"Error: Missing required environment variable {e}. Validator proxy vars required.")
+
+# OPTIONAL: Model Name defaults to a sensible value if not injected
+# (Validator does not always inject this, unlike API_KEY)
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 
 # Task configuration
 TASK_IDS = [1, 2, 3]
@@ -52,7 +58,6 @@ def log_start(task: str, env: str, model: str) -> None:
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
-    # Formatting: 2 decimal places for reward, lowercase bools
     print(
         f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
@@ -82,20 +87,15 @@ Only use column names that currently exist. Output raw JSON only."""
 def _parse_action(text: str) -> Action:
     """Parses LLM response into an Action object."""
     if not text or not text.strip():
-        # Default fallback action if empty
         return Action(op="strip_whitespace", params={"col": "all"})
     
-    # Clean markdown code blocks if present
     text = re.sub(r"```(?:json)?", "", text).strip().strip("`").strip()
-    
-    # Find JSON object
     match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
     if not match:
         return Action(op="strip_whitespace", params={"col": "all"})
         
     try:
         data = json.loads(match.group())
-        # Normalize keys
         if "operation" in data and "op" not in data:
             data["op"] = data.pop("operation")
         if "op" in data and "params" not in data:
@@ -135,20 +135,23 @@ def run_episode(task_id: int):
     rewards: List[float] = []
     steps_taken = 0
     success = False
+    final_score = 0.0
     
-    # Log Start
     log_start(task=task_name, env=BENCHMARK_NAME, model=MODEL_NAME)
     
-    obs = env.reset()
+    obs = None
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     
     try:
+        # 1. Reset Environment (Can fail if Docker container isn't ready)
+        obs = env.reset()
+        
         while not obs.done and steps_taken < MAX_STEPS:
-            # 1. Construct Prompt
+            # 2. Construct Prompt
             user_content = _format_observation(obs)
             messages.append({"role": "user", "content": user_content})
             
-            # 2. Call LLM
+            # 3. Call LLM
             try:
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
@@ -159,19 +162,14 @@ def run_episode(task_id: int):
                 )
                 raw_action_str = response.choices[0].message.content or ""
             except Exception as e:
-                # Log error and use default action
                 print(f"[DEBUG] API Error: {e}", flush=True)
                 raw_action_str = ""
             
-            # 3. Parse Action
+            # 4. Parse Action
             action = _parse_action(raw_action_str)
-            
-            # Log assistant response for history context
             messages.append({"role": "assistant", "content": raw_action_str or "{}"})
             
-            # 4. Step Environment
-            # Note: Your env returns (obs, reward, done, info). 
-            # We assume reward is an object with .total based on your previous code.
+            # 5. Step Environment
             obs, reward_obj, done, info = env.step(action)
             
             # Extract float reward
@@ -180,8 +178,7 @@ def run_episode(task_id: int):
             steps_taken += 1
             rewards.append(current_reward)
             
-            # 5. Log Step
-            # Convert action to string for logging
+            # 6. Log Step
             action_str = action.model_dump_json() if hasattr(action, 'model_dump_json') else str(action)
             
             log_step(
@@ -195,21 +192,17 @@ def run_episode(task_id: int):
             if done:
                 break
         
-        # 6. Calculate Final Score
-        final_score = grade(task_id, env.df)
-        success = final_score >= 0.5  # Example threshold logic
+        # 7. Calculate Final Score
+        if obs and hasattr(env, 'df'):
+            final_score = grade(task_id, env.df)
+        success = final_score >= 0.5
         
     except Exception as e:
-        # If anything crashes, we still need to print [END]
+        # Catch any crash during reset, step, or grading
         print(f"[DEBUG] Episode crashed: {e}", flush=True)
-        # Log the crash step if possible, or just finish
-        log_step(
-            step=steps_taken + 1,
-            action="error",
-            reward=0.0,
-            done=True,
-            error=str(e)
-        )
+        if not obs: 
+            # If crash happened at reset, log a dummy step to satisfy parser
+            log_step(step=0, action="init_error", reward=0.0, done=True, error=str(e))
         final_score = 0.0
         success = False
         
@@ -221,7 +214,6 @@ def run_episode(task_id: int):
             score=final_score,
             rewards=rewards
         )
-        # Ensure env is closed if it has a close method
         if hasattr(env, 'close'):
             try:
                 env.close()
@@ -238,5 +230,5 @@ if __name__ == "__main__":
             run_episode(tid)
         except Exception as e:
             print(f"CRITICAL FAILURE on Task {tid}: {e}", flush=True)
-            # Ensure we print a formatted END line even on critical failure to keep parser happy
+            # Ensure we print a formatted END line even on critical failure
             print(f"[END] success=false steps=0 score=0.000 rewards=0.00", flush=True)
