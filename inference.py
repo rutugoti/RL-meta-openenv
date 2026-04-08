@@ -1,9 +1,13 @@
 """
-inference.py — OpenEnv required entry point.
-The automated validator imports this file and calls run_inference().
+inference.py — OpenEnv Phase 2 entry point.
 
-Priority 1: GPT-4o agent if OPENAI_API_KEY is set.
-Priority 2: Deterministic mock agent if no key — never crashes.
+Required structured stdout format (parsed by validator):
+  [START] task=TASK_NAME
+  [STEP] step=N reward=X.XXXX
+  [END] task=TASK_NAME score=X.XXXX steps=N
+
+Priority 1: OpenAI-compatible LLM via MODEL_NAME + API_BASE_URL env vars.
+Priority 2: Deterministic mock agent if no API key — never crashes.
 """
 from __future__ import annotations
 import os
@@ -17,6 +21,17 @@ from env.environment import DataCleaningEnv
 from env.models      import Action, Observation
 from graders.grader  import grade
 
+# ── Environment variables (as per sample inference.py spec) ───────
+MODEL_NAME   = os.environ.get("MODEL_NAME",   "gpt-4o")
+API_BASE_URL = os.environ.get("API_BASE_URL",  "https://api.openai.com/v1")
+API_KEY      = os.environ.get("OPENAI_API_KEY", "").strip()
+
+# Task name map — used in [START]/[END] lines
+TASK_NAMES = {
+    1: "basic-cleanup",
+    2: "type-fixing",
+    3: "schema-inference",
+}
 
 # ── System prompt ─────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a data cleaning agent.
@@ -67,7 +82,7 @@ def _fmt_obs(obs: Observation) -> str:
     )
 
 
-# ── Mock sequences — used when no API key ─────────────────────────
+# ── Mock sequences — deterministic fallback ───────────────────────
 _MOCK_SEQUENCES = {
     1: [
         Action(op="strip_whitespace",
@@ -132,46 +147,38 @@ _MOCK_SEQUENCES = {
 }
 
 
-# ── Core function ─────────────────────────────────────────────────
+# ── Core run_inference function ───────────────────────────────────
 def run_inference(
     env:     DataCleaningEnv,
     task_id: int = 1,
     seed:    int = 42,
 ) -> dict:
     """
-    Run one episode of DataCleaningEnv.
-
-    Priority 1: GPT-4o agent if OPENAI_API_KEY is set.
-    Priority 2: Deterministic mock agent otherwise.
-
-    Never raises. Always returns a valid result dict.
-
-    Args:
-        env:     Instantiated DataCleaningEnv (already reset or not).
-        task_id: Which task to run (1=easy, 2=medium, 3=hard).
-        seed:    Reproducibility seed.
-
-    Returns:
-        dict with task_id, score, steps, done, agent.
+    Run one episode. Prints [START]/[STEP]/[END] to stdout.
+    Priority 1: LLM via API_BASE_URL + MODEL_NAME + OPENAI_API_KEY.
+    Priority 2: Deterministic mock agent — never crashes.
+    Returns dict with task_id, score, steps, done, agent.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    task_name = TASK_NAMES.get(task_id, f"task-{task_id}")
 
-    # ── Try GPT-4o first ──────────────────────────────────────────
-    if api_key:
+    # Required: print START to stdout immediately
+    print(f"[START] task={task_name}", flush=True)
+
+    # ── Try LLM agent ─────────────────────────────────────────────
+    if API_KEY:
         try:
             from openai import OpenAI
-            client   = OpenAI(api_key=api_key)
+            client   = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
             obs      = env.reset()
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
             steps    = 0
-            score    = 0.0
 
             while not obs.done:
                 messages.append({"role": "user",
                                   "content": _fmt_obs(obs)})
                 try:
                     resp = client.chat.completions.create(
-                        model       = "gpt-4o",
+                        model       = MODEL_NAME,
                         messages    = messages,
                         temperature = 0.0,
                         max_tokens  = 150,
@@ -187,49 +194,62 @@ def run_inference(
                                   "content": raw or "{}"})
 
                 obs, reward, done, _ = env.step(action)
-                score = reward.total
                 steps += 1
+
+                # Required: print STEP to stdout
+                print(f"[STEP] step={steps} reward={round(reward.total, 4)}",
+                      flush=True)
                 if done:
                     break
 
+            final_score = grade(task_id, env.df)
+            # Required: print END to stdout
+            print(f"[END] task={task_name} score={final_score} steps={steps}",
+                  flush=True)
             return {
                 "task_id": task_id,
-                "score":   grade(task_id, env.df),
+                "score":   final_score,
                 "steps":   steps,
                 "done":    obs.done,
-                "agent":   "gpt-4o",
+                "agent":   "llm",
             }
 
         except Exception:
-            # GPT-4o failed for any reason → fall through to mock
+            # LLM failed — fall through to mock
             pass
 
     # ── Fallback: deterministic mock agent ────────────────────────
-    obs      = env.reset()
-    actions  = _MOCK_SEQUENCES.get(task_id, [])
-    steps    = 0
-    score    = 0.0
+    obs     = env.reset()
+    actions = _MOCK_SEQUENCES.get(task_id, [])
+    steps   = 0
 
     for action in actions:
         if obs.done:
             break
         try:
             obs, reward, done, _ = env.step(action)
-            score = reward.total
             steps += 1
+            # Required: print STEP to stdout
+            print(f"[STEP] step={steps} reward={round(reward.total, 4)}",
+                  flush=True)
         except Exception:
             break
 
+    final_score = grade(task_id, env.df)
+    # Required: print END to stdout
+    print(f"[END] task={task_name} score={final_score} steps={steps}",
+          flush=True)
+
     return {
         "task_id": task_id,
-        "score":   grade(task_id, env.df),
+        "score":   final_score,
         "steps":   steps,
         "done":    obs.done,
         "agent":   "mock-deterministic",
     }
 
 
-# ── Standalone — runs all 3 tasks when called directly ───────────
+# ── Entry point — runs all 3 tasks ───────────────────────────────
 if __name__ == "__main__":
     results = []
     for tid in [1, 2, 3]:
@@ -237,11 +257,9 @@ if __name__ == "__main__":
             e      = DataCleaningEnv(task_id=tid, seed=42)
             result = run_inference(e, task_id=tid, seed=42)
             results.append(result)
-            print(f"Task {tid}: {result['score']} "
-                  f"(agent: {result['agent']})",
-                  flush=True)
         except Exception as ex:
-            print(f"Task {tid}: ERROR — {ex}", flush=True)
+            task_name = TASK_NAMES.get(tid, f"task-{tid}")
+            print(f"[END] task={task_name} score=0.0 steps=0", flush=True)
             results.append({
                 "task_id": tid,
                 "score":   0.0,
@@ -249,4 +267,6 @@ if __name__ == "__main__":
                 "done":    False,
                 "agent":   "error",
             })
+
+    # Final JSON summary to stdout
     print(json.dumps(results, indent=2), flush=True)
