@@ -1,13 +1,15 @@
 """
 inference.py — OpenEnv Phase 2 entry point.
 
-Required structured stdout format (parsed by validator):
+The validator injects these environment variables:
+  API_BASE_URL  — LiteLLM proxy URL (required, use this)
+  API_KEY       — proxy API key (required, use this)
+  MODEL_NAME    — model to use (default: gpt-4o)
+
+Structured stdout format (parsed by validator):
   [START] task=TASK_NAME
   [STEP] step=N reward=X.XXXX
   [END] task=TASK_NAME score=X.XXXX steps=N
-
-Priority 1: OpenAI-compatible LLM via MODEL_NAME + API_BASE_URL env vars.
-Priority 2: Deterministic mock agent if no API key — never crashes.
 """
 from __future__ import annotations
 import os
@@ -21,12 +23,12 @@ from env.environment import DataCleaningEnv
 from env.models      import Action, Observation
 from graders.grader  import grade
 
-# ── Environment variables (as per sample inference.py spec) ───────
+# ── Read injected env vars exactly as validator provides them ─────
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+API_KEY      = os.environ.get("API_KEY",      "")          # validator injects this
 MODEL_NAME   = os.environ.get("MODEL_NAME",   "gpt-4o")
-API_BASE_URL = os.environ.get("API_BASE_URL",  "https://api.openai.com/v1")
-API_KEY      = os.environ.get("OPENAI_API_KEY", "").strip()
 
-# Task name map — used in [START]/[END] lines
+# Task name map
 TASK_NAMES = {
     1: "basic-cleanup",
     2: "type-fixing",
@@ -82,19 +84,19 @@ def _fmt_obs(obs: Observation) -> str:
     )
 
 
-# ── Mock sequences — deterministic fallback ───────────────────────
+# ── Mock sequences — fallback only when API_KEY not set ───────────
 _MOCK_SEQUENCES = {
     1: [
         Action(op="strip_whitespace",
                params={"col": "all"}),
         Action(op="rename_column",
-               params={"from_col": "User ID", "to_col": "user_id"}),
+               params={"from_col": "User ID",      "to_col": "user_id"}),
         Action(op="rename_column",
-               params={"from_col": "First Name", "to_col": "first_name"}),
+               params={"from_col": "First Name",   "to_col": "first_name"}),
         Action(op="rename_column",
-               params={"from_col": "AGE", "to_col": "age"}),
+               params={"from_col": "AGE",          "to_col": "age"}),
         Action(op="rename_column",
-               params={"from_col": "email_address", "to_col": "email"}),
+               params={"from_col": "email_address","to_col": "email"}),
         Action(op="drop_column",
                params={"col": "user_id"}),
     ],
@@ -147,81 +149,64 @@ _MOCK_SEQUENCES = {
 }
 
 
-# ── Core run_inference function ───────────────────────────────────
-def run_inference(
-    env:     DataCleaningEnv,
-    task_id: int = 1,
-    seed:    int = 42,
-) -> dict:
+# ── LLM agent via validator-injected proxy ────────────────────────
+def _run_llm_episode(env: DataCleaningEnv,
+                     task_id: int,
+                     task_name: str) -> dict:
     """
-    Run one episode. Prints [START]/[STEP]/[END] to stdout.
-    Priority 1: LLM via API_BASE_URL + MODEL_NAME + OPENAI_API_KEY.
-    Priority 2: Deterministic mock agent — never crashes.
-    Returns dict with task_id, score, steps, done, agent.
+    Runs agent using API_KEY + API_BASE_URL from environment.
+    These are injected by the validator — must use them.
     """
-    task_name = TASK_NAMES.get(task_id, f"task-{task_id}")
+    from openai import OpenAI
+    client   = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+    obs      = env.reset()
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    steps    = 0
 
-    # Required: print START to stdout immediately
     print(f"[START] task={task_name}", flush=True)
 
-    # ── Try LLM agent ─────────────────────────────────────────────
-    if API_KEY:
+    while not obs.done:
+        messages.append({"role": "user", "content": _fmt_obs(obs)})
         try:
-            from openai import OpenAI
-            client   = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
-            obs      = env.reset()
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            steps    = 0
-
-            while not obs.done:
-                messages.append({"role": "user",
-                                  "content": _fmt_obs(obs)})
-                try:
-                    resp = client.chat.completions.create(
-                        model       = MODEL_NAME,
-                        messages    = messages,
-                        temperature = 0.0,
-                        max_tokens  = 150,
-                        timeout     = 30,
-                    )
-                    raw = resp.choices[0].message.content
-                except Exception:
-                    raw = ""
-
-                action = _parse_action(raw) or Action(
-                    op="strip_whitespace", params={"col": "all"})
-                messages.append({"role": "assistant",
-                                  "content": raw or "{}"})
-
-                obs, reward, done, _ = env.step(action)
-                steps += 1
-
-                # Required: print STEP to stdout
-                print(f"[STEP] step={steps} reward={round(reward.total, 4)}",
-                      flush=True)
-                if done:
-                    break
-
-            final_score = grade(task_id, env.df)
-            # Required: print END to stdout
-            print(f"[END] task={task_name} score={final_score} steps={steps}",
-                  flush=True)
-            return {
-                "task_id": task_id,
-                "score":   final_score,
-                "steps":   steps,
-                "done":    obs.done,
-                "agent":   "llm",
-            }
-
+            resp = client.chat.completions.create(
+                model       = MODEL_NAME,
+                messages    = messages,
+                temperature = 0.0,
+                max_tokens  = 150,
+                timeout     = 30,
+            )
+            raw = resp.choices[0].message.content
         except Exception:
-            # LLM failed — fall through to mock
-            pass
+            raw = ""
 
-    # ── Fallback: deterministic mock agent ────────────────────────
+        action = _parse_action(raw) or Action(
+            op="strip_whitespace", params={"col": "all"})
+        messages.append({"role": "assistant", "content": raw or "{}"})
+
+        obs, reward, done, _ = env.step(action)
+        steps += 1
+        print(f"[STEP] step={steps} reward={round(reward.total, 4)}",
+              flush=True)
+        if done:
+            break
+
+    final_score = grade(task_id, env.df)
+    print(f"[END] task={task_name} score={final_score} steps={steps}",
+          flush=True)
+
+    return {"task_id": task_id, "score": final_score,
+            "steps": steps, "done": obs.done, "agent": "llm"}
+
+
+# ── Mock agent fallback ───────────────────────────────────────────
+def _run_mock_episode(env: DataCleaningEnv,
+                      task_id: int,
+                      task_name: str) -> dict:
     obs     = env.reset()
     actions = _MOCK_SEQUENCES.get(task_id, [])
     steps   = 0
+
+    print(f"[START] task={task_name}", flush=True)
 
     for action in actions:
         if obs.done:
@@ -229,44 +214,60 @@ def run_inference(
         try:
             obs, reward, done, _ = env.step(action)
             steps += 1
-            # Required: print STEP to stdout
             print(f"[STEP] step={steps} reward={round(reward.total, 4)}",
                   flush=True)
         except Exception:
             break
 
     final_score = grade(task_id, env.df)
-    # Required: print END to stdout
     print(f"[END] task={task_name} score={final_score} steps={steps}",
           flush=True)
 
-    return {
-        "task_id": task_id,
-        "score":   final_score,
-        "steps":   steps,
-        "done":    obs.done,
-        "agent":   "mock-deterministic",
-    }
+    return {"task_id": task_id, "score": final_score,
+            "steps": steps, "done": obs.done, "agent": "mock-deterministic"}
 
 
-# ── Entry point — runs all 3 tasks ───────────────────────────────
+# ── Public API ────────────────────────────────────────────────────
+def run_inference(
+    env:     DataCleaningEnv,
+    task_id: int = 1,
+    seed:    int = 42,
+) -> dict:
+    """
+    Run one episode of DataCleaningEnv.
+
+    Uses API_KEY + API_BASE_URL env vars (injected by validator).
+    Falls back to deterministic mock if no API_KEY present.
+    Always prints [START]/[STEP]/[END] to stdout.
+    Never raises.
+    """
+    task_name = TASK_NAMES.get(task_id, f"task-{task_id}")
+
+    # Always try LLM first if API_KEY is present (validator injects this)
+    if API_KEY:
+        try:
+            return _run_llm_episode(env, task_id, task_name)
+        except Exception:
+            pass  # fall through to mock
+
+    # Fallback — no API key available
+    return _run_mock_episode(env, task_id, task_name)
+
+
+# ── Entry point ───────────────────────────────────────────────────
 if __name__ == "__main__":
     results = []
     for tid in [1, 2, 3]:
+        task_name = TASK_NAMES.get(tid, f"task-{tid}")
         try:
             e      = DataCleaningEnv(task_id=tid, seed=42)
             result = run_inference(e, task_id=tid, seed=42)
             results.append(result)
         except Exception as ex:
-            task_name = TASK_NAMES.get(tid, f"task-{tid}")
             print(f"[END] task={task_name} score=0.0 steps=0", flush=True)
             results.append({
-                "task_id": tid,
-                "score":   0.0,
-                "steps":   0,
-                "done":    False,
-                "agent":   "error",
+                "task_id": tid, "score": 0.0,
+                "steps": 0, "done": False, "agent": "error",
             })
 
-    # Final JSON summary to stdout
     print(json.dumps(results, indent=2), flush=True)
