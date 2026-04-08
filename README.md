@@ -207,17 +207,16 @@ Swagger UI: `https://ruuuuq-data-cleaning-env.hf.space/docs`
 ---
 
 ## Baseline scores
-| Task | Difficulty | Baseline score | Agent |
-|------|------------|----------------|-------|
-| Task 1 | Easy   | **0.4000** | 0.8000 |
-| Task 2 | Medium | **0.2440** | 0.8083 |
-| Task 3 | Hard   | **0.1000** | 0.8182 |
+| Task | Difficulty | Baseline score |  
+|------|------------|----------------|
+| Task 1 | Easy     |    **0.4000**  | 
+| Task 2 | Medium   |    **0.2440**  | 
+| Task 3 | Hard     |    **0.1000**  | 
 
 Evaluated with `seed=42`. Run with your own `OPENAI_API_KEY`
 for GPT-4o evaluation: `python baseline/run.py --verbose`
 
-Script auto-detects: uses GPT-4o if key is set,
-falls back to deterministic mock agent otherwise.
+
 
 ---
 
