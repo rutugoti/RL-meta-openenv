@@ -3,6 +3,8 @@ import pandas as pd
 from env.models import Observation, Action, Reward
 from tasks.task_definitions import load_dirty_df, TASKS
 
+from graders.downstream_health import compute_terminal_reward
+
 
 class DataCleaningEnv:
     """
@@ -45,37 +47,58 @@ class DataCleaningEnv:
     def step(self, action: Action):
         if self.df is None:
             raise RuntimeError("Call reset() before step()")
-        action_valid = self._apply_action(action)
+ 
+        action_valid    = self._apply_action(action)
         self.step_count += 1
-        done   = self.step_count >= self.MAX_STEPS
-        target = TASKS[self.task_id]
-        reward = self._compute_reward(action_valid, target)
-        obs    = self._make_observation()
-        # build rich info for debugging and agent logging
-        target      = TASKS[self.task_id]
+        done            = self.step_count >= self.MAX_STEPS
+        target          = TASKS[self.task_id]
+        reward          = self._compute_reward(action_valid, target)
+ 
+        # ── Terminal reward: hidden downstream health check ───────────
+        if done:
+            # Use reward.total (current state) NOT a historical best score
+            terminal         = compute_terminal_reward(
+                df         = self.df,
+                base_score = reward.total,   
+            )
+            reward.total     = terminal["total_reward"]  
+            downstream_health  = terminal["downstream_health"]
+            downstream_reason  = terminal["downstream_reason"]
+            terminal_bonus     = terminal["terminal_bonus"]
+        else:
+            terminal           = {}
+            downstream_health  = "IN_PROGRESS"
+            downstream_reason  = ""
+            terminal_bonus     = 0.0
+ 
+        obs = self._make_observation()
+ 
         tgt_cols    = set(target["target_columns"])
         curr_cols   = set(self.df.columns)
         matched     = curr_cols & tgt_cols
         unmatched   = tgt_cols - curr_cols
         total_nulls = int(self.df.isnull().sum().sum())
-
+ 
         info = {
-            "action_valid":      action_valid,
-            "step":              self.step_count,
-            "op":                action.op,
-            "params":            action.params,
-            "columns_now":       list(self.df.columns),
-            "columns_matched":   list(matched),
-            "columns_missing":   list(unmatched),
-            "total_nulls":       total_nulls,
-            "steps_remaining":   self.MAX_STEPS - self.step_count,
-            "reward_breakdown":  {
-                "name_score":    reward.name_score,
-                "dtype_score":   reward.dtype_score,
-                "null_score":    reward.null_score,
-                "step_penalty":  reward.step_penalty,
-                "total":         reward.total,
+            "action_valid":     action_valid,
+            "step":             self.step_count,
+            "op":               action.op,
+            "params":           action.params,
+            "columns_now":      list(self.df.columns),
+            "columns_matched":  list(matched),
+            "columns_missing":  list(unmatched),
+            "total_nulls":      total_nulls,
+            "steps_remaining":  self.MAX_STEPS - self.step_count,
+            "reward_breakdown": {
+                "name_score":   reward.name_score,
+                "dtype_score":  reward.dtype_score,
+                "null_score":   reward.null_score,
+                "step_penalty": reward.step_penalty,
+                "total":        reward.total,  
             },
+            "downstream_health": downstream_health,
+            "downstream_reason": downstream_reason,
+            "terminal_bonus":    terminal_bonus,
         }
         return obs, reward, done, info
 
