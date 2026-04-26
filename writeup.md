@@ -101,11 +101,13 @@ These are plots from real runs (saved as images in this Space repo).
 
 ### v9 curve
 
-![curve_v9](assets/images/curve_v9.png)
+![curve_v9](assets/images/curve_v9.png) random task curv
 
 ### v11 curve
 
 ![curve_v11](assets/images/curve_v11.png)
+
+one by one task 
 
 If you skim one thing in this writeup, skim the v11 curve: it’s where the training loop stopped “cheating” and started learning across tasks.
 
@@ -152,10 +154,9 @@ The dream is a model that doesn’t just clean a table — it **explains its cle
 
 ## Links (judges / quick access)
 
-- **Hugging Face Space (env)**: TODO_ADD_SPACE_LINK  
-- **Swagger docs**: TODO_ADD_SPACE_DOCS_LINK  
-- **Training notebook**: `RL_Data_Cleaning_Agent.ipynb`  
-- **Repository**: TODO_ADD_REPO_LINK  
+- **Hugging Face Space (env)**: https://huggingface.co/spaces/ruuuuq/data-cleaning-env   
+- **Training notebook**:https://colab.research.google.com/drive/1Hn56fy-jx-U1_fNhFIOwiKAHD3loxeal?usp=sharing
+- **Repository**: https://github.com/rutugoti/RL-meta-openenv  
 
-If you’re reading this as a judge: start with `/docs`, then glance at the training curves, then open the notebook to see how reward is computed by stepping the environment and calling the grader.
+
 
