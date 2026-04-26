@@ -183,13 +183,13 @@ This repository includes an end‑to‑end RL training notebook that trains an L
 
 Reward/loss curves from real training runs:
 
-- v9 curve:
+- v9 curve (if images don’t render on Spaces, this uses a raw URL):
 
-![curve_v9](assets/images/curve_v9.png)
+![curve_v9](https://huggingface.co/spaces/ruuuuq/data-cleaning-env/resolve/main/assets/images/curve_v9.png?raw=1)
 
 - v11 curve:
 
-![curve_v11](assets/images/curve_v11.png)
+![curve_v11](https://huggingface.co/spaces/ruuuuq/data-cleaning-env/resolve/main/assets/images/curve_v11.png?raw=1)
 
 ---
 
