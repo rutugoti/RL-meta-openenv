@@ -24,6 +24,28 @@ compliance — not subjective quality.
 
 ---
 
+## Competition checklist (non‑negotiables)
+
+- **OpenEnv**: This environment is built on OpenEnv.  
+  - **TODO (verification)**: Pin to **latest OpenEnv release** (e.g. tag/commit hash) in `requirements.txt`/`openenv.yaml` and mention it here.
+- **Working RL training notebook/script**: ✅ Provided via `RL_Data_Cleaning_Agent.ipynb` (TRL GRPO-style loop on `DataCleaningEnv`).
+- **Evidence of training (real run plots)**: ✅ Included below (reward/loss curves screenshots).
+- **Short writeup/video**: **TODO** add either:
+  - Hugging Face mini‑blog link: **TODO_LINK**
+  - or <2 min YouTube video link: **TODO_LINK**
+- **Hugging Face Space (env runnable & discoverable)**: ✅ Space link below (also keep it in the README header/links).
+- **README links**: **TODO** ensure Space + blog/video + any slides are linked from this README.
+
+---
+
+## Writeup (HF blog)
+
+Read the project writeup here:
+
+- `writeup.md`
+
+---
+
 ## Environment description
 
 The environment presents an agent with a dirty pandas DataFrame and
@@ -145,6 +167,29 @@ reward improvement on that step — without needing to complete
 the entire task. This dense, multi-dimensional signal makes
 the environment suitable for training agents that generalise
 across different dataset schemas.
+
+---
+
+## Training (RL)
+
+This repository includes an end‑to‑end RL training notebook that trains an LLM to output **one JSON action per line** and is scored by the environment grader:
+
+- `RL_Data_Cleaning_Agent.ipynb`
+  - clones/uses this repo’s OpenEnv environment (`DataCleaningEnv`, `TASKS`, `grade`)
+  - trains with Hugging Face TRL (GRPO-style)
+  - evaluates on held-out seeds
+
+### Training evidence (real runs)
+
+Reward/loss curves from real training runs:
+
+- v9 curve:
+
+![curve_v9](assets/images/curve_v9.png)
+
+- v11 curve:
+
+![curve_v11](assets/images/curve_v11.png)
 
 ---
 
